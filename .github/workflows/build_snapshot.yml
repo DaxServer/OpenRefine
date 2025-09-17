@@ -29,8 +29,12 @@ jobs:
     - name: Generate dist files
       run: mvn --batch-mode package -DskipTests -Dgpg.skip
 
+    - name: Set version string output variable
+      id: version_string_variable
+      run: echo "output_value=$(mvn org.apache.maven.plugins:maven-help-plugin:3.1.0:evaluate -Dexpression=project.version -q -DforceStdout)" >> "$GITHUB_OUTPUT"
+
     - name: Upload release artifact
       uses: actions/upload-artifact@v4
       with:
-        path: "./packaging/target/openrefine-linux-${{ github.sha }}.tar.gz"
+        path: "./packaging/target/openrefine-linux-${{ steps.version_string_variable.outputs.output_value }}.tar.gz"
         name: openrefine-linux-${{ github.sha }}
