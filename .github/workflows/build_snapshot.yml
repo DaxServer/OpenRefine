@@ -27,9 +27,9 @@ jobs:
       run: cd main/webapp && npm install
 
     - name: Generate dist files
-      run: mvn --batch-mode package -DskipTests=true
+      run: mvn --batch-mode package -DskipTests -Dgpg.skip
 
     - name: Publish to GitHub Packages
-      run: mvn --batch-mode deploy
+      run: mvn --batch-mode deploy -Dgpg.skip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
