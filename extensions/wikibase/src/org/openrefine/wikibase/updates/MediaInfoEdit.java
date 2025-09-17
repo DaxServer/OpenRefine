@@ -299,11 +299,18 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
             response = mediaFileUtils.uploadRemoteFile(url, fileName, wikitext, summary, tags, !isNew());
         }
 
-        // Check for duplicate file warnings and handle them
-        if (response.warnings != null && response.warnings.containsKey("duplicate")) {
-            logger.debug("Duplicate file detected during upload. File: " + fileName);
-            handleDuplicateFileWarning(response, mediaFileUtils);
-            return response;
+        if (response.warnings != null) {
+            if (response.warnings.containsKey("duplicate")) {
+                logger.debug("Duplicate file detected during upload. File: " + fileName);
+                handleDuplicateFileWarning(response, mediaFileUtils);
+                return response;
+            }
+
+            if (response.warnings.containsKey("exists")) {
+                logger.debug("File already exists during upload. File: " + fileName);
+                handleExistingFileWarning(response, mediaFileUtils, wikitext, summary, tags);
+                return response;
+            }
         }
 
         response.checkForErrors();
@@ -311,7 +318,8 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
     }
 
     /**
-     * Handles duplicate file warnings by updating reconciliation to match existing entity.
+     * Handles duplicate file warnings by checking if the file actually exists and implementing the enhanced workflow
+     * for missing files.
      *
      * @param response
      *            the upload response containing duplicate warnings
@@ -321,16 +329,7 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
     private void handleDuplicateFileWarning(MediaUploadResponse response, MediaFileUtils mediaFileUtils) {
         try {
             JsonNode duplcateWarning = response.warnings.get("duplicate");
-            String duplicateFileName = null;
-
-            if (duplcateWarning.isTextual()) {
-                duplicateFileName = duplcateWarning.asText();
-            } else if (duplcateWarning.isArray() && duplcateWarning.size() > 0) {
-                duplicateFileName = duplcateWarning.get(0).asText();
-            } else {
-                logger.warn("Unexpected duplicate file warning format: {}", duplcateWarning.asText());
-                return;
-            }
+            String duplicateFileName = extractFileNameFromWarning(duplcateWarning);
 
             if (duplicateFileName == null || duplicateFileName.isEmpty()) {
                 logger.warn("Unexpected duplicate filename format: {}", duplcateWarning.asText());
@@ -341,6 +340,73 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
             response.markAsDuplicate(duplicateFileName);
         } catch (Exception e) {
             logger.warn("Failed to handle duplicate file warning: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Handles existing file warnings by marking the response as duplicate.
+     *
+     * @param response
+     *            the upload response containing exists warnings
+     * @param mediaFileUtils
+     *            the MediaFileUtils instance for API access
+     */
+    private void handleExistingFileWarning(MediaUploadResponse response, MediaFileUtils mediaFileUtils, String wikitext, String summary,
+            List<String> tags) {
+        try {
+            JsonNode existsWarning = response.warnings.get("exists");
+            String existingFileName = extractFileNameFromWarning(existsWarning);
+
+            if (existingFileName == null || !isFileMissing(existingFileName, mediaFileUtils)) {
+                return;
+            }
+
+            logger.warn("Found existing file but no page: {}", existingFileName);
+            mediaFileUtils.createPage(existingFileName, wikitext, summary, tags);
+            logger.info("Created page for file: {}", existingFileName);
+            response.markExistingFileHandled(existingFileName);
+        } catch (Exception e) {
+            logger.warn("Failed to handle existing file warning: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Extracts filename from warning node, handling both text and single-element array formats.
+     *
+     * @param warningNode
+     *            the warning JsonNode
+     * @return the extracted filename or null if extraction fails
+     */
+    private String extractFileNameFromWarning(JsonNode warningNode) {
+        String fileName = null;
+        if (warningNode.isTextual()) {
+            fileName = warningNode.asText();
+        } else if (warningNode.isArray() && warningNode.size() == 1) {
+            fileName = warningNode.get(0).asText();
+        }
+
+        if (fileName == null || fileName.isEmpty()) {
+            logger.warn("Extracted filename is invalid: {}", warningNode.asText());
+            return null;
+        }
+
+        return fileName;
+    }
+
+    /**
+     * Checks if the file is missing based on the imageinfo API response.
+     *
+     * @param imageInfoResponse
+     *            the API response from imageinfo query
+     * @return true if the file is missing, false otherwise
+     */
+    private boolean isFileMissing(String fileName, MediaFileUtils mediaFileUtils) {
+        try {
+            JsonNode page = mediaFileUtils.queryImageInfo(fileName).get("query").get("pages").get("-1");
+            return page.has("missing");
+        } catch (IOException | MediaWikiApiErrorException e) {
+            logger.warn("Failed to check file missing: {}", fileName, e);
+            return false;
         }
     }
 
