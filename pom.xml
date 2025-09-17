@@ -331,9 +331,7 @@
         <version>1.7.0</version>
         <extensions>true</extensions>
         <configuration>
-          <serverId>ossrh-staging-api</serverId>
-          <nexusUrl>https://ossrh-staging-api.central.sonatype.com</nexusUrl>
-          <autoReleaseAfterClose>true</autoReleaseAfterClose>
+
         </configuration>
       </plugin>
         <plugin>
@@ -401,14 +399,16 @@
 
   <!-- Locations of the artifacts published -->
   <distributionManagement>
-     <snapshotRepository>
-       <id>ossrh-staging-api</id>
-       <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-     </snapshotRepository>
-     <repository>
-       <id>ossrh-staging-api</id>
-       <url>https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/</url>
-     </repository>
+    <repository>
+        <id>github</id>
+        <name>GitHub Packages</name>
+        <url>https://maven.pkg.github.com/DaxServer/OpenRefine</url>
+    </repository>
+    <snapshotRepository>
+        <id>github</id>
+        <name>GitHub Packages</name>
+        <url>https://maven.pkg.github.com/DaxServer/OpenRefine</url>
+    </snapshotRepository>
   </distributionManagement>
 
 </project>
