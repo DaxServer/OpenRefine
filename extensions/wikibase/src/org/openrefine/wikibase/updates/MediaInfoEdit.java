@@ -5,10 +5,12 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URL;
 import java.util.*;
+import java.util.ArrayList;
 import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.jsoup.helper.Validate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,11 +31,12 @@ import org.openrefine.wikibase.editing.MediaFileUtils.MediaUploadResponse;
 import org.openrefine.wikibase.editing.NewEntityLibrary;
 import org.openrefine.wikibase.editing.ReconEntityRewriter;
 import org.openrefine.wikibase.schema.entityvalues.ReconEntityIdValue;
+import org.openrefine.wikibase.schema.entityvalues.ReconMediaInfoIdValue;
 import org.openrefine.wikibase.schema.exceptions.NewEntityNotCreatedYetException;
 
 /**
  * Represents a candidate edit on a MediaInfo entity.
- * 
+ *
  * @author Antonin Delpeuch
  *
  */
@@ -48,7 +51,7 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
 
     /**
      * Constructor.
-     * 
+     *
      * @param id
      *            the subject of the document. It can be a reconciled entity value for new entities.
      * @param statements
@@ -87,9 +90,9 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
 
     /**
      * Protected constructor to avoid re-constructing term maps when merging two entity updates.
-     * 
+     *
      * No validation is done on the arguments, they all have to be non-null.
-     * 
+     *
      * @param id
      *            the subject of the update
      * @param statements
@@ -216,7 +219,7 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
 
     /**
      * If the update corresponds to a new file, uploads the new file, its wikitext and its metadata.
-     * 
+     *
      * @param editor
      *            the {@link WikibaseDataEditor} to use
      * @param mediaFileUtils
@@ -239,6 +242,20 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
             throws MediaWikiApiErrorException, IOException, InterruptedException {
         Validate.isTrue(isNew());
         MediaUploadResponse response = uploadFile(mediaFileUtils, summary, tags, filePageWaitTime, filePageMaxWaitTime);
+
+        // Check if this is a duplicate file
+        if (response.isDuplicate()) {
+            if (id instanceof ReconMediaInfoIdValue) {
+                ReconMediaInfoIdValue reconMediaInfoIdValue = (ReconMediaInfoIdValue) id;
+                MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), reconMediaInfoIdValue.getRecon().identifierSpace);
+                logger.info("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
+                return mid;
+            } else {
+                logger.warn("Duplicate file detected but entity ID is not a ReconMediaInfoIdValue: {}. Cannot handle duplicate.", id.getClass().getSimpleName());
+                return null;
+            }
+        }
+
         List<String> filenames = Collections.singletonList(fileName);
         logger.info("Checking if file page has been created.");
         int waitTime = filePageWaitTime;
@@ -254,7 +271,7 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
 
     /**
      * Upload a file.
-     * 
+     *
      * @param mediaFileUtils
      *            the {@link MediaFileUtils} to use
      * @param summary
@@ -288,13 +305,57 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
             response = mediaFileUtils.uploadRemoteFile(url, fileName, wikitext, summary, tags, !isNew());
         }
 
+        // Check for duplicate file warnings and handle them
+        if (response.warnings != null && response.warnings.containsKey("duplicate")) {
+            logger.warn("Duplicate file detected during upload. File: " + fileName);
+            handleDuplicateFileWarning(response, mediaFileUtils);
+            return response;
+        }
+
         response.checkForErrors();
         return response;
     }
 
     /**
+     * Handles duplicate file warnings by updating reconciliation to match existing entity.
+     *
+     * @param response the upload response containing duplicate warnings
+     * @param mediaFileUtils the MediaFileUtils instance for API access
+     */
+    private void handleDuplicateFileWarning(MediaUploadResponse response, MediaFileUtils mediaFileUtils) {
+        try {
+            JsonNode duplcateWarning = response.warnings.get("duplicate");
+            String duplicateFileName = null;
+
+            if (duplcateWarning.isTextual()) {
+                duplicateFileName = duplcateWarning.asText();
+            } else if (duplcateWarning.isArray() && duplcateWarning.size() > 0) {
+                duplicateFileName = duplcateWarning.get(0).asText();
+            } else {
+              logger.warn("Unexpected duplicate file warning format: {}", duplcateWarning.asText());
+              return;
+            }
+
+            if (duplicateFileName == null || duplicateFileName.isEmpty()) {
+              logger.warn("Unexpected duplicate filename format: {}", duplcateWarning.asText());
+              return;
+            }
+
+            logger.warn("Found duplicate file: " + duplicateFileName + ". Marking response as duplicate.");
+
+            // MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), response.getRecon().identifierSpace);
+            // logger.info("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
+
+            // Get the MediaInfo ID for the duplicate file
+            response.markAsDuplicate(duplicateFileName);
+        } catch (Exception e) {
+            logger.warn("Failed to handle duplicate file warning: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Upload file metadata.
-     * 
+     *
      * @param editor
      *            the {@link WikibaseDataEditor} to use
      * @param mediaFileUtils
