@@ -20,11 +20,14 @@ jobs:
         distribution: 'temurin'
         cache: maven
 
+    - name: Install genisoimage
+      run: sudo apt-get install genisoimage
+
     - name: Install webapp dependencies
       run: cd main/webapp && npm install
 
     - name: Generate dist files
-      run: mvn -B package -DskipTests=true
+      run: mvn --batch-mode package -DskipTests=true
 
     - name: Publish to GitHub Packages
       run: mvn --batch-mode deploy
