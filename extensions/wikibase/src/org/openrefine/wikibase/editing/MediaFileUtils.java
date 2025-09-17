@@ -490,8 +490,8 @@ public class MediaFileUtils {
         /**
          * Marks this response as representing a duplicate file.
          *
-         * @param duplicateFileName the name of the existing duplicate file
-         * @param mid the MediaInfo ID of the existing duplicate file
+         * @param duplicateFileName
+         *            the name of the existing duplicate file
          */
         public void markAsDuplicate(String duplicateFileName) {
             isDuplicate = true;

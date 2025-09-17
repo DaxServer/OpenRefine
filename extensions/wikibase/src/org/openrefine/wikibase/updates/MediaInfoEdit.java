@@ -248,10 +248,11 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
             if (id instanceof ReconMediaInfoIdValue) {
                 ReconMediaInfoIdValue reconMediaInfoIdValue = (ReconMediaInfoIdValue) id;
                 MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), reconMediaInfoIdValue.getRecon().identifierSpace);
-                logger.info("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
+                logger.debug("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
                 return mid;
             } else {
-                logger.warn("Duplicate file detected but entity ID is not a ReconMediaInfoIdValue: {}. Cannot handle duplicate.", id.getClass().getSimpleName());
+                logger.warn("Duplicate file detected but entity ID is not a ReconMediaInfoIdValue: {}. Cannot handle duplicate.",
+                        id.getClass().getSimpleName());
                 return null;
             }
         }
@@ -307,7 +308,7 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
 
         // Check for duplicate file warnings and handle them
         if (response.warnings != null && response.warnings.containsKey("duplicate")) {
-            logger.warn("Duplicate file detected during upload. File: " + fileName);
+            logger.debug("Duplicate file detected during upload. File: " + fileName);
             handleDuplicateFileWarning(response, mediaFileUtils);
             return response;
         }
@@ -319,8 +320,10 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
     /**
      * Handles duplicate file warnings by updating reconciliation to match existing entity.
      *
-     * @param response the upload response containing duplicate warnings
-     * @param mediaFileUtils the MediaFileUtils instance for API access
+     * @param response
+     *            the upload response containing duplicate warnings
+     * @param mediaFileUtils
+     *            the MediaFileUtils instance for API access
      */
     private void handleDuplicateFileWarning(MediaUploadResponse response, MediaFileUtils mediaFileUtils) {
         try {
@@ -332,21 +335,16 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
             } else if (duplcateWarning.isArray() && duplcateWarning.size() > 0) {
                 duplicateFileName = duplcateWarning.get(0).asText();
             } else {
-              logger.warn("Unexpected duplicate file warning format: {}", duplcateWarning.asText());
-              return;
+                logger.warn("Unexpected duplicate file warning format: {}", duplcateWarning.asText());
+                return;
             }
 
             if (duplicateFileName == null || duplicateFileName.isEmpty()) {
-              logger.warn("Unexpected duplicate filename format: {}", duplcateWarning.asText());
-              return;
+                logger.warn("Unexpected duplicate filename format: {}", duplcateWarning.asText());
+                return;
             }
 
             logger.warn("Found duplicate file: " + duplicateFileName + ". Marking response as duplicate.");
-
-            // MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), response.getRecon().identifierSpace);
-            // logger.info("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
-
-            // Get the MediaInfo ID for the duplicate file
             response.markAsDuplicate(duplicateFileName);
         } catch (Exception e) {
             logger.warn("Failed to handle duplicate file warning: " + e.getMessage(), e);
