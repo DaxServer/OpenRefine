@@ -38,7 +38,7 @@ import com.google.refine.util.ParsingUtilities;
 
 /**
  * Collection of wrappers around MediaWiki actions which are not supported by WDTK.
- * 
+ *
  * @author Antonin Delpeuch
  *
  */
@@ -63,7 +63,7 @@ public class MediaFileUtils {
 
     /**
      * Sets how long we should wait before retrying in case of a maxlag error.
-     * 
+     *
      * @param milliseconds
      */
     public void setMaxLagWaitTime(int milliseconds) {
@@ -72,7 +72,7 @@ public class MediaFileUtils {
 
     /**
      * Purge the cache associated with a given MediaWiki page.
-     * 
+     *
      * @throws MediaWikiApiErrorException
      * @throws IOException
      */
@@ -113,7 +113,7 @@ public class MediaFileUtils {
 
     /**
      * Upload a local file to the MediaWiki instance.
-     * 
+     *
      * @param path
      *            the path to the local file
      * @param fileName
@@ -157,7 +157,7 @@ public class MediaFileUtils {
 
     /**
      * Upload a local file to the MediaWiki instance in chunks.
-     * 
+     *
      * @param path
      *            ChunkedFile of the local file
      * @param fileName
@@ -221,7 +221,7 @@ public class MediaFileUtils {
     /**
      * Upload a file that the MediaWiki server fetches directly from the supplied URL. The URL domain must likely be
      * whitelisted before.
-     * 
+     *
      * @param url
      *            the URL of the file to upload
      * @param fileName
@@ -256,7 +256,7 @@ public class MediaFileUtils {
 
     /**
      * Edits the text contents of a wiki page
-     * 
+     *
      * @param pageId
      *            the pageId of the page to edit
      * @param wikitext
@@ -331,7 +331,7 @@ public class MediaFileUtils {
 
     /**
      * Internal method, common to both local and remote file upload.
-     * 
+     *
      * @param parameters
      * @param files
      * @return
@@ -419,10 +419,12 @@ public class MediaFileUtils {
 
         @JsonIgnore
         private MediaInfoIdValue mid = null;
+        @JsonIgnore
+        private boolean isDuplicate = false;
 
         /**
          * Checks that the upload was successful, and if not raise an exception
-         * 
+         *
          * @throws MediaWikiApiErrorException
          */
         public void checkForErrors() throws MediaWikiApiErrorException {
@@ -443,10 +445,10 @@ public class MediaFileUtils {
         /**
          * Retrieves the Mid, either from the upload response or by issuing another call to obtain it from the filename
          * through the supplied connection.
-         * 
+         *
          * This should not be needed anymore when this is already exposed in the API response of the upload action.
          * https://phabricator.wikimedia.org/T307096
-         * 
+         *
          * @param connection
          * @return
          * @throws MediaWikiApiErrorException
@@ -483,6 +485,29 @@ public class MediaFileUtils {
             Set<String> warningCodes = warnings.keySet();
             Set<String> allowedWarnings = Set.of("exists", "duplicateversions");
             return allowedWarnings.containsAll(warningCodes);
+        }
+
+        /**
+         * Marks this response as representing a duplicate file.
+         *
+         * @param duplicateFileName the name of the existing duplicate file
+         * @param mid the MediaInfo ID of the existing duplicate file
+         */
+        public void markAsDuplicate(String duplicateFileName) {
+            isDuplicate = true;
+            filename = duplicateFileName;
+            if (warnings != null) {
+                warnings.remove("duplicate");
+            }
+        }
+
+        /**
+         * Checks if this response represents a duplicate file.
+         *
+         * @return true if this is a duplicate file
+         */
+        public boolean isDuplicate() {
+            return isDuplicate;
         }
     }
 
@@ -532,7 +557,7 @@ public class MediaFileUtils {
 
         /**
          * Get length of the file.
-         * 
+         *
          * @see File#length() length
          * @return {long}
          */
@@ -542,7 +567,7 @@ public class MediaFileUtils {
 
         /**
          * Get the extension from the filename.
-         * 
+         *
          * @return {String} The file extensions, including the dot. If the file has no extensions, the empty string.
          */
         public String getExtension() {
