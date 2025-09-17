@@ -31,7 +31,6 @@ import org.openrefine.wikibase.editing.MediaFileUtils.MediaUploadResponse;
 import org.openrefine.wikibase.editing.NewEntityLibrary;
 import org.openrefine.wikibase.editing.ReconEntityRewriter;
 import org.openrefine.wikibase.schema.entityvalues.ReconEntityIdValue;
-import org.openrefine.wikibase.schema.entityvalues.ReconMediaInfoIdValue;
 import org.openrefine.wikibase.schema.exceptions.NewEntityNotCreatedYetException;
 
 /**
@@ -245,16 +244,10 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
 
         // Check if this is a duplicate file
         if (response.isDuplicate()) {
-            if (id instanceof ReconMediaInfoIdValue) {
-                ReconMediaInfoIdValue reconMediaInfoIdValue = (ReconMediaInfoIdValue) id;
-                MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), reconMediaInfoIdValue.getRecon().identifierSpace);
-                logger.debug("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
-                return mid;
-            } else {
-                logger.warn("Duplicate file detected but entity ID is not a ReconMediaInfoIdValue: {}. Cannot handle duplicate.",
-                        id.getClass().getSimpleName());
-                return null;
-            }
+            ReconEntityIdValue reconEntityIdValue = (ReconEntityIdValue) id;
+            MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), reconEntityIdValue.getRecon().identifierSpace);
+            logger.debug("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
+            return mid;
         }
 
         List<String> filenames = Collections.singletonList(fileName);
