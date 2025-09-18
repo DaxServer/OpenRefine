@@ -246,6 +246,11 @@ public class MediaInfoEdit extends LabeledStatementEntityEdit {
         if (response.isDuplicate()) {
             ReconEntityIdValue reconEntityIdValue = (ReconEntityIdValue) id;
             MediaInfoIdValue mid = response.getMid(mediaFileUtils.getApiConnection(), reconEntityIdValue.getRecon().identifierSpace);
+
+            if (mid == null) {
+                throw new MediaWikiApiErrorException("400", "Duplicate file detected, but MediaInfo ID not found: " + fileName);
+            }
+
             logger.debug("Duplicate file detected. Returning existing MediaInfo ID: {}", mid.getId());
             return mid;
         }
