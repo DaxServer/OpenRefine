@@ -255,6 +255,39 @@ public class MediaFileUtils {
     }
 
     /**
+     * Creates a new wiki page.
+     *
+     * @param title
+     *            the title of the page to create
+     * @param wikitext
+     *            the contents of the page
+     * @param summary
+     *            the edit summary
+     * @param tags
+     *            any tags that should be applied to the edit
+     * @return the revision id created by the edit
+     * @throws IOException
+     *             if a network error happened
+     * @throws MediaWikiApiErrorException
+     *             if the editing failed for some reason, after a few retries
+     */
+    public MediaInfoIdValue createPage(String title, String wikitext, String summary, List<String> tags)
+            throws IOException, MediaWikiApiErrorException {
+        Map<String, String> parameters = new HashMap<>();
+        parameters.put("action", "edit");
+        parameters.put("title", String.format("File:%s", title));
+        parameters.put("tags", String.join("|", tags));
+        parameters.put("summary", summary);
+        parameters.put("text", wikitext);
+        parameters.put("bot", "true");
+        parameters.put("token", getCsrfToken());
+
+        long pageId = sendEditRequest(parameters, "pageid");
+
+        return Datamodel.makeMediaInfoIdValue(String.format("M%d", pageId), "http://some.site/iri");
+    }
+
+    /**
      * Edits the text contents of a wiki page
      *
      * @param pageId
@@ -281,14 +314,18 @@ public class MediaFileUtils {
         parameters.put("bot", "true");
         parameters.put("token", getCsrfToken());
 
+        return sendEditRequest(parameters, "newrevid");
+    }
+
+    private long sendEditRequest(Map<String, String> parameters, String paramToReturn) throws IOException, MediaWikiApiErrorException {
         int retries = maxRetries;
         long backOffTime = maxLagWaitTime;
         MediaWikiApiErrorException lastException = null;
         while (retries > 0) {
             try {
                 JsonNode response = apiConnection.sendJsonRequest("POST", parameters);
-                if (response.has("edit") && response.get("edit").has("newrevid")) {
-                    return response.get("edit").get("newrevid").asLong(0L);
+                if (response.has("edit") && response.get("edit").has(paramToReturn)) {
+                    return response.get("edit").get(paramToReturn).asLong(0L);
                 } else {
                     throw new IllegalStateException("Could not find the revision id in MediaWiki's response");
                 }
@@ -298,6 +335,7 @@ public class MediaFileUtils {
             retries--;
             if (retries > 0) {
                 try {
+                    logger.warn("editPage:API error: {} ", lastException.toString());
                     logger.info(String.format("-- editPage:API error. %d attempts left. Pausing %d secs before retry.", retries,
                             backOffTime / 1000));
                     Thread.sleep(backOffTime);
@@ -327,6 +365,25 @@ public class MediaFileUtils {
                 .filter(entry -> entry.getValue() != null)
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * Queries imageinfo for a specific filename to check if the file exists and get metadata.
+     *
+     * @param fileName
+     *            the filename to query (including File: prefix)
+     * @return JsonNode containing the API response
+     * @throws IOException
+     * @throws MediaWikiApiErrorException
+     */
+    public JsonNode queryImageInfo(String fileName) throws IOException, MediaWikiApiErrorException {
+        Map<String, String> parameters = new HashMap<>();
+        parameters.put("action", "query");
+        parameters.put("prop", "imageinfo");
+        parameters.put("iiprop", "sha1|user|url");
+        parameters.put("titles", fileName);
+
+        return apiConnection.sendJsonRequest("GET", parameters);
     }
 
     /**
@@ -508,6 +565,19 @@ public class MediaFileUtils {
          */
         public boolean isDuplicate() {
             return isDuplicate;
+        }
+
+        /**
+         * Marks this response as representing an existing file.
+         *
+         * @param existingFileName
+         *            the name of the existing file
+         */
+        public void markExistingFileHandled(String existingFileName) {
+            filename = existingFileName;
+            if (warnings != null) {
+                warnings.remove("exists");
+            }
         }
     }
 
