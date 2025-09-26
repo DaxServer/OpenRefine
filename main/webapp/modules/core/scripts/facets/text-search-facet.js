@@ -204,7 +204,7 @@ class TextSearchFacet extends Facet {
       this._timerID = window.setTimeout(function() {
         self._timerID = null;
         self._updateRest();
-      }, self._config.mode === 'regex' ? 1500 : 500);
+      }, 2000);
     }
   };
 
