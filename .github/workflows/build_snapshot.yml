@@ -1,0 +1,40 @@
+name: Build Snapshot and Publish to GitHub Packages
+
+on:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v5
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Install genisoimage
+      run: sudo apt-get install genisoimage
+
+    - name: Install webapp dependencies
+      run: cd main/webapp && npm install
+
+    - name: Generate dist files
+      run: mvn --batch-mode package -DskipTests -Dgpg.skip
+
+    - name: Set version string output variable
+      id: version_string_variable
+      run: echo "output_value=$(mvn org.apache.maven.plugins:maven-help-plugin:3.1.0:evaluate -Dexpression=project.version -q -DforceStdout)" >> "$GITHUB_OUTPUT"
+
+    - name: Upload release artifact
+      uses: actions/upload-artifact@v4
+      with:
+        path: "./packaging/target/openrefine-linux-${{ steps.version_string_variable.outputs.output_value }}.tar.gz"
+        name: openrefine-linux
