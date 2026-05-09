@@ -2,7 +2,7 @@
  * Manages Wikibase instances.
  */
 const WikibaseManager = {
-  selected: "Wikidata",
+  selected: "Wikimedia Commons",
   wikibases: {
     "Wikidata": WikidataManifestV1_0, // default one
     "Wikimedia Commons": CommonsManifestV2_0
@@ -183,19 +183,19 @@ WikibaseManager.getAllWikibaseManifests = function () {
     }
   }
 
-  manifests.sort((a, b) => {
-    let ret;
-    let aName = a.mediawiki.name.toLowerCase();
-    let bName = b.mediawiki.name.toLowerCase();
-    if (aName < bName) {
-      ret = -1;
-    } else if (aName > bName) {
-      ret = 1;
-    } else {
-      ret = 0;
-    }
-    return ret;
-  });
+  // manifests.sort((a, b) => {
+  //   let ret;
+  //   let aName = a.mediawiki.name.toLowerCase();
+  //   let bName = b.mediawiki.name.toLowerCase();
+  //   if (aName < bName) {
+  //     ret = -1;
+  //   } else if (aName > bName) {
+  //     ret = 1;
+  //   } else {
+  //     ret = 0;
+  //   }
+  //   return ret;
+  // });
 
 
   return manifests;

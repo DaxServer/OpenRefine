@@ -38,7 +38,7 @@ import com.google.refine.util.ParsingUtilities;
 
 /**
  * Collection of wrappers around MediaWiki actions which are not supported by WDTK.
- * 
+ *
  * @author Antonin Delpeuch
  *
  */
@@ -63,7 +63,7 @@ public class MediaFileUtils {
 
     /**
      * Sets how long we should wait before retrying in case of a maxlag error.
-     * 
+     *
      * @param milliseconds
      */
     public void setMaxLagWaitTime(int milliseconds) {
@@ -72,7 +72,7 @@ public class MediaFileUtils {
 
     /**
      * Purge the cache associated with a given MediaWiki page.
-     * 
+     *
      * @throws MediaWikiApiErrorException
      * @throws IOException
      */
@@ -113,7 +113,7 @@ public class MediaFileUtils {
 
     /**
      * Upload a local file to the MediaWiki instance.
-     * 
+     *
      * @param path
      *            the path to the local file
      * @param fileName
@@ -157,7 +157,7 @@ public class MediaFileUtils {
 
     /**
      * Upload a local file to the MediaWiki instance in chunks.
-     * 
+     *
      * @param path
      *            ChunkedFile of the local file
      * @param fileName
@@ -221,7 +221,7 @@ public class MediaFileUtils {
     /**
      * Upload a file that the MediaWiki server fetches directly from the supplied URL. The URL domain must likely be
      * whitelisted before.
-     * 
+     *
      * @param url
      *            the URL of the file to upload
      * @param fileName
@@ -255,8 +255,41 @@ public class MediaFileUtils {
     }
 
     /**
+     * Creates a new wiki page.
+     *
+     * @param title
+     *            the title of the page to create
+     * @param wikitext
+     *            the contents of the page
+     * @param summary
+     *            the edit summary
+     * @param tags
+     *            any tags that should be applied to the edit
+     * @return the revision id created by the edit
+     * @throws IOException
+     *             if a network error happened
+     * @throws MediaWikiApiErrorException
+     *             if the editing failed for some reason, after a few retries
+     */
+    public MediaInfoIdValue createPage(String title, String wikitext, String summary, List<String> tags)
+            throws IOException, MediaWikiApiErrorException {
+        Map<String, String> parameters = new HashMap<>();
+        parameters.put("action", "edit");
+        parameters.put("title", String.format("File:%s", title));
+        parameters.put("tags", String.join("|", tags));
+        parameters.put("summary", summary);
+        parameters.put("text", wikitext);
+        parameters.put("bot", "true");
+        parameters.put("token", getCsrfToken());
+
+        long pageId = sendEditRequest(parameters, "pageid");
+
+        return Datamodel.makeMediaInfoIdValue(String.format("M%d", pageId), "http://some.site/iri");
+    }
+
+    /**
      * Edits the text contents of a wiki page
-     * 
+     *
      * @param pageId
      *            the pageId of the page to edit
      * @param wikitext
@@ -281,14 +314,18 @@ public class MediaFileUtils {
         parameters.put("bot", "true");
         parameters.put("token", getCsrfToken());
 
+        return sendEditRequest(parameters, "newrevid");
+    }
+
+    private long sendEditRequest(Map<String, String> parameters, String paramToReturn) throws IOException, MediaWikiApiErrorException {
         int retries = maxRetries;
         long backOffTime = maxLagWaitTime;
         MediaWikiApiErrorException lastException = null;
         while (retries > 0) {
             try {
                 JsonNode response = apiConnection.sendJsonRequest("POST", parameters);
-                if (response.has("edit") && response.get("edit").has("newrevid")) {
-                    return response.get("edit").get("newrevid").asLong(0L);
+                if (response.has("edit") && response.get("edit").has(paramToReturn)) {
+                    return response.get("edit").get(paramToReturn).asLong(0L);
                 } else {
                     throw new IllegalStateException("Could not find the revision id in MediaWiki's response");
                 }
@@ -298,6 +335,7 @@ public class MediaFileUtils {
             retries--;
             if (retries > 0) {
                 try {
+                    logger.warn("editPage:API error: {} ", lastException.toString());
                     logger.info(String.format("-- editPage:API error. %d attempts left. Pausing %d secs before retry.", retries,
                             backOffTime / 1000));
                     Thread.sleep(backOffTime);
@@ -330,8 +368,27 @@ public class MediaFileUtils {
     }
 
     /**
+     * Queries imageinfo for a specific filename to check if the file exists and get metadata.
+     *
+     * @param fileName
+     *            the filename to query (including File: prefix)
+     * @return JsonNode containing the API response
+     * @throws IOException
+     * @throws MediaWikiApiErrorException
+     */
+    public JsonNode queryImageInfo(String fileName) throws IOException, MediaWikiApiErrorException {
+        Map<String, String> parameters = new HashMap<>();
+        parameters.put("action", "query");
+        parameters.put("prop", "imageinfo");
+        parameters.put("iiprop", "sha1|user|url");
+        parameters.put("titles", fileName);
+
+        return apiConnection.sendJsonRequest("GET", parameters);
+    }
+
+    /**
      * Internal method, common to both local and remote file upload.
-     * 
+     *
      * @param parameters
      * @param files
      * @return
@@ -419,10 +476,12 @@ public class MediaFileUtils {
 
         @JsonIgnore
         private MediaInfoIdValue mid = null;
+        @JsonIgnore
+        private boolean isDuplicate = false;
 
         /**
          * Checks that the upload was successful, and if not raise an exception
-         * 
+         *
          * @throws MediaWikiApiErrorException
          */
         public void checkForErrors() throws MediaWikiApiErrorException {
@@ -443,10 +502,10 @@ public class MediaFileUtils {
         /**
          * Retrieves the Mid, either from the upload response or by issuing another call to obtain it from the filename
          * through the supplied connection.
-         * 
+         *
          * This should not be needed anymore when this is already exposed in the API response of the upload action.
          * https://phabricator.wikimedia.org/T307096
-         * 
+         *
          * @param connection
          * @return
          * @throws MediaWikiApiErrorException
@@ -483,6 +542,42 @@ public class MediaFileUtils {
             Set<String> warningCodes = warnings.keySet();
             Set<String> allowedWarnings = Set.of("exists", "duplicateversions");
             return allowedWarnings.containsAll(warningCodes);
+        }
+
+        /**
+         * Marks this response as representing a duplicate file.
+         *
+         * @param duplicateFileName
+         *            the name of the existing duplicate file
+         */
+        public void markAsDuplicate(String duplicateFileName) {
+            isDuplicate = true;
+            filename = duplicateFileName;
+            if (warnings != null) {
+                warnings.remove("duplicate");
+            }
+        }
+
+        /**
+         * Checks if this response represents a duplicate file.
+         *
+         * @return true if this is a duplicate file
+         */
+        public boolean isDuplicate() {
+            return isDuplicate;
+        }
+
+        /**
+         * Marks this response as representing an existing file.
+         *
+         * @param existingFileName
+         *            the name of the existing file
+         */
+        public void markExistingFileHandled(String existingFileName) {
+            filename = existingFileName;
+            if (warnings != null) {
+                warnings.remove("exists");
+            }
         }
     }
 
@@ -532,7 +627,7 @@ public class MediaFileUtils {
 
         /**
          * Get length of the file.
-         * 
+         *
          * @see File#length() length
          * @return {long}
          */
@@ -542,7 +637,7 @@ public class MediaFileUtils {
 
         /**
          * Get the extension from the filename.
-         * 
+         *
          * @return {String} The file extensions, including the dot. If the file has no extensions, the empty string.
          */
         public String getExtension() {
